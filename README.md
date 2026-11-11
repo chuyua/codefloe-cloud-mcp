@@ -25,11 +25,37 @@
 
 ## 部署说明
 
-当前生产版本托管在 ChatGPT Sites / Cloudflare Workers，使用 D1 保存加密后的 CodeFloe Token。部署需要相应的 Sites 项目、D1 绑定和运行时密钥；不要把生产 D1 内容或运行时密钥提交到 Git。
+当前 ChatGPT Sites 部署支持按 ChatGPT 用户身份隔离凭据，并使用 D1 保存加密后的 CodeFloe Token。以下单用户 Cloudflare 部署是可选模式，不需要 D1，也不影响 Sites 模式。
 
-`TOKEN_ENCRYPTION_KEY` 是 Cloudflare Worker 运行时 Secret，必须是 Base64 编码的 32 字节随机密钥。仅在 Sites 的环境变量/Secret 设置中配置；绝不能写入 `.env`、示例配置、源码或提交记录。密钥轮换会导致旧密文无法解密，轮换前需先规划现有凭据迁移。
+Sites 模式的 `TOKEN_ENCRYPTION_KEY` 是 Cloudflare Worker 运行时 Secret，必须是 Base64 编码的 32 字节随机密钥。只在 Sites 的 Secret 设置中配置；绝不能写入源码或提交记录。密钥轮换会导致旧密文无法解密，轮换前需先规划现有凭据迁移。
 
-连接页面依赖 Sites 注入的 `oai-authenticated-user-id`，并使用 Sites 提供的 ChatGPT 身份验证。普通 Cloudflare 部署不会自动具备这些身份头；独立部署前需要实现等价的身份认证与用户隔离。
+连接页面和 MCP 在 Sites 模式依赖 Sites 注入的 `oai-authenticated-user-id`。单用户模式改为通过 Cloudflare Worker Secrets 读取个人 CodeFloe Token，并要求 MCP 调用携带独立的 Bearer 密钥。网页不会收集或显示这两个密钥。
+
+## 单用户部署到自己的 Cloudflare
+
+此模式只供你本人使用。MCP Worker 的 URL 可公开访问，但所有 MCP 请求都必须通过 `MCP_ACCESS_TOKEN` 验证；不要把它发给其他人。先在 Cloudflare 登录并进行首次部署：
+
+```sh
+pnpm exec wrangler login
+pnpm install --frozen-lockfile
+pnpm cf:build
+pnpm cf:deploy
+```
+
+`cf:build` 会生成不带 D1/R2 绑定的 Cloudflare Worker 部署配置；本模式不需要创建数据库或配置 `TOKEN_ENCRYPTION_KEY`。
+
+首次部署创建 Worker 后，设置两个 Worker Secret：
+
+```sh
+pnpm exec wrangler secret put CODEFLOE_TOKEN
+pnpm exec wrangler secret put MCP_ACCESS_TOKEN
+```
+
+在 Wrangler 提示时分别输入 CodeFloe 个人访问令牌和独立生成的随机值。`MCP_ACCESS_TOKEN` 至少需要 32 字节随机数据；可在本机用 `openssl rand -hex 32` 生成。不要将生成值写入仓库、命令参数或聊天记录。`wrangler secret put` 会立即部署含新 Secret 的 Worker 版本。
+
+设置好 Secret 后，将 `plugin/mcp.cloudflare.example.json` 中的示例 URL 换成 Wrangler 显示的 Worker URL，并在 ChatGPT 的连接设置中把 API Key 设为同一个 `MCP_ACCESS_TOKEN`。
+
+单用户模式下，连接页只显示 Secret 是否已配置；CodeFloe Token 是否有效由经过 Bearer 验证的 `codefloe_connection_status` 工具检查。使用 `pnpm exec wrangler secret put CODEFLOE_TOKEN` 更新密钥时，Wrangler 会立即创建并部署 Worker 新版本。
 
 ## 本地开发
 

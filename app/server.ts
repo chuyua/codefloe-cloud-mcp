@@ -4,9 +4,22 @@ import { credentials } from "../db/schema";
 import { eq } from "drizzle-orm";
 const encode=(v:Uint8Array)=>btoa(String.fromCharCode(...v));
 const decode=(v:string)=>Uint8Array.from(atob(v),c=>c.charCodeAt(0));
+export function isSingleUserMode(){return !!env.MCP_ACCESS_TOKEN?.trim();}
+export function requestUser(request:Request){return request.headers.get("oai-authenticated-user-id")||(isSingleUserMode()?"single-user":null);}
+export function authorizeMcpRequest(request:Request){
+ const secret=env.MCP_ACCESS_TOKEN?.trim();
+ if(!secret)return isSingleUserMode()?false:!!request.headers.get("oai-authenticated-user-id");
+ const match=/^Bearer\s+([^\s]+)$/i.exec(request.headers.get("authorization")||"");
+ if(!match)return false;
+ const expected=new TextEncoder().encode(secret),actual=new TextEncoder().encode(match[1]);
+ if(expected.length<32)return false;
+ let difference=expected.length^actual.length;
+ for(let i=0;i<Math.max(expected.length,actual.length);i++)difference|=(expected[i]||0)^(actual[i]||0);
+ return difference===0;
+}
 async function key(){const secret=(env as unknown as Record<string,string>).TOKEN_ENCRYPTION_KEY;if(!secret)throw Error("服务端加密配置缺失");return crypto.subtle.importKey("raw",decode(secret),"AES-GCM",false,["encrypt","decrypt"]);}
 export async function saveToken(user:string,token:string){const iv=crypto.getRandomValues(new Uint8Array(12));const bytes=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:new TextEncoder().encode(user)},await key(),new TextEncoder().encode(token));const encrypted=encode(iv)+"."+encode(new Uint8Array(bytes));await getDb().insert(credentials).values({userId:user,encrypted}).onConflictDoUpdate({target:credentials.userId,set:{encrypted}});}
-export async function getToken(user:string){const row=await getDb().select().from(credentials).where(eq(credentials.userId,user)).get();if(!row)return null;const [iv,data]=row.encrypted.split('.');return new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:decode(iv),additionalData:new TextEncoder().encode(user)},await key(),decode(data)));}
+export async function getToken(user:string){if(isSingleUserMode())return env.CODEFLOE_TOKEN?.trim()||null;const row=await getDb().select().from(credentials).where(eq(credentials.userId,user)).get();if(!row)return null;const [iv,data]=row.encrypted.split('.');return new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:decode(iv),additionalData:new TextEncoder().encode(user)},await key(),decode(data)));}
 export async function removeToken(user:string){await getDb().delete(credentials).where(eq(credentials.userId,user));}
 export function normalizeToken(value: string) {
   return value.trim().replace(/^(?:Bearer|token)\s+/i, "");
