@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "codefloe-connector",
+  "version": "0.1.0",
+  "description": "Connect to the official CodeFloe MCP server.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "CodeFloe",
+        "shortDescription": "Manage CodeFloe repositories",
+        "longDescription": "Connect to CodeFloe repositories, issues, pull requests and CI through its official MCP server using your own access token.",
+        "category": "Developer Tools",
+        "capabilities": [],
+        "defaultPrompt": "查看我的 CodeFloe 仓库"
+      }
+    }
+  }
+}
