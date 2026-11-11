@@ -2,8 +2,11 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { readExecutionProfile } from "./execution-profile.mjs";
 
-const [command, ...args] = process.argv.slice(2);
-if (!["dev", "build"].includes(command)) throw new Error("Expected dev or build.");
+const [requestedCommand, ...args] = process.argv.slice(2);
+const singleUserBuild = requestedCommand === "build:cloudflare-single-user";
+const command = singleUserBuild ? "build" : requestedCommand;
+if (!["dev", "build"].includes(command)) throw new Error("Expected dev, build, or build:cloudflare-single-user.");
+if (singleUserBuild) process.env.CODEFLOE_SINGLE_USER_MODE = "true";
 const managedLinux = readExecutionProfile() === "managed-linux";
 
 if (managedLinux && command === "build") {
